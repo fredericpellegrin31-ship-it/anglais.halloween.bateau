@@ -3,92 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Halloween Vocabulary Game</title>
+    <title>Halloween Vocabulary - Treasure Hunt</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background-color: #0088ff; touch-action: none; }
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background-color: #1a1a2e; touch-action: none; }
         canvas { display: block; }
         #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; display: flex; flex-direction: column;
             justify-content: space-between; padding: 15px;
         }
         .hud-element {
             pointer-events: auto; background: #fff;
-            color: #005bb7; padding: 8px 16px; border-radius: 12px;
-            border: 3px solid #005bb7; box-shadow: 0 4px 0px #003d7a; font-weight: bold;
+            color: #4b0082; padding: 8px 16px; border-radius: 12px;
+            border: 3px solid #4b0082; box-shadow: 0 4px 0px #2e004f; font-weight: bold;
         }
         #feedback-text {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 80px; font-weight: 900; pointer-events: none; opacity: 0; transition: 0.3s;
-            text-shadow: 4px 4px 0px #000;
+            font-size: 4rem; font-weight: 900; opacity: 0; transition: opacity 0.3s;
+            text-shadow: 4px 4px 0px #000; pointer-events: none; text-align: center;
         }
         #end-screen {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-            flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: white;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(26, 26, 46, 0.95); display: none; flex-direction: column;
+            align-items: center; justify-content: center; color: white; text-align: center;
         }
-        .star { font-size: 60px; color: #555; transition: color 0.5s; }
-        .star.active { color: #ffcc00; text-shadow: 0 0 20px #ffaa00; }
+        .star { font-size: 3rem; color: #ffd700; margin: 0 5px; }
+        .star-empty { font-size: 3rem; color: #444; margin: 0 5px; }
+        #trophy { font-size: 6rem; display: none; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
-        <div class="flex justify-between">
-            <div id="score-board" class="hud-element">Score: 0 / 10</div>
-            <div id="target-display" class="hud-element text-2xl uppercase">LISTEN...</div>
+        <div class="flex justify-between items-start">
+            <div class="hud-element" id="score-display">SCORE: 0 / 10</div>
+            <button class="hud-element" onclick="location.reload()">🔄</button>
         </div>
-        <div id="feedback-text"></div>
-        <div id="touch-zones" class="grid grid-cols-3 gap-4 h-1/2 opacity-0">
-            <div onclick="checkHit(0)"></div>
-            <div onclick="checkHit(1)"></div>
-            <div onclick="checkHit(2)"></div>
+        <div class="flex justify-center">
+            <div class="hud-element text-2xl" id="target-word">CHARGE...</div>
+        </div>
+        <div id="touch-zones" class="grid grid-cols-3 gap-4 h-32 pointer-events-auto">
+            <div onpointerdown="moveShip(-1)" onpointerup="stopShip()" class="bg-white/10 rounded-xl border-2 border-white/20 flex items-center justify-center text-3xl">⬅️</div>
+            <div></div>
+            <div onpointerdown="moveShip(1)" onpointerup="stopShip()" class="bg-white/10 rounded-xl border-2 border-white/20 flex items-center justify-center text-3xl">➡️</div>
         </div>
     </div>
 
+    <div id="feedback-text">BRAVO!</div>
+
     <div id="end-screen">
-        <h2 id="final-title" class="text-5xl font-black mb-4">FINI !</h2>
-        <div id="stars-container" class="flex gap-2 mb-6">
-            <span class="star">★</span>
-            <span class="star">★</span>
-            <span class="star">★</span>
-        </div>
-        <div id="trophy" class="text-8xl mb-6 hidden">🏆</div>
-        <button onclick="location.reload()" class="hud-element text-xl px-10 py-4">REJOUER</button>
+        <div id="trophy">🏆</div>
+        <h1 class="text-5xl font-black mb-4">TERMINE !</h1>
+        <div id="stars-container" class="mb-6"></div>
+        <p id="final-score" class="text-2xl mb-8"></p>
+        <button onclick="location.reload()" class="bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-4 px-10 rounded-full text-xl shadow-lg transform active:scale-95 transition">REJOUER</button>
     </div>
 
     <script>
-        // Configuration
         const vocab = [
-            { word: "ghost", img: "ghost.png" },
-            { word: "monster", img: "monster.png" },
-            { word: "mummy", img: "mummy.png" },
-            { word: "pirate", img: "pirate.png" },
-            { word: "pumpkin", img: "pumpkin.png" },
-            { word: "skeleton", img: "squeleton.png" },
-            { word: "vampire", img: "vampire.png" },
-            { word: "witch", img: "witch.png" }
+            { word: "GHOST", img: "ghost.png" },
+            { word: "MONSTER", img: "monster.png" },
+            { word: "MUMMY", img: "mummy.png" },
+            { word: "PIRATE", img: "pirate.png" },
+            { word: "PUMPKIN", img: "pumpkin.png" },
+            { word: "SKELETON", img: "squeleton.png" },
+            { word: "VAMPIRE", img: "vampire.png" },
+            { word: "WITCH", img: "witch.png" }
         ];
 
-        let score = 0;
-        let currentQuestion = 0;
-        const totalQuestions = 10;
-        let scene, camera, renderer, chests = [], boat, targetItem;
-        let gameActive = true;
-        let canHit = false;
+        let scene, camera, renderer, ship, chests = [];
+        let score = 0, currentQuestion = 0, gameActive = true;
+        let targetItem = null, moveDir = 0, canHit = true;
+        const loader = new THREE.TextureLoader();
 
-        const textureLoader = new THREE.TextureLoader();
+        init();
+        animate();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-            camera.position.set(0, 150, 400);
-            camera.lookAt(0, 50, 0);
-
+            scene.background = new THREE.Color(0x1a1a2e);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -96,144 +94,104 @@
             const ambient = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambient);
 
-            // Bateau (Joueur)
-            const boatGeo = new THREE.BoxGeometry(100, 40, 60);
-            const boatMat = new THREE.MeshPhongMaterial({ color: 0x8b4513 });
-            boat = new THREE.Mesh(boatGeo, boatMat);
-            boat.position.y = 20;
-            scene.add(boat);
+            // Création du Joueur (Petit Bateau / Ghost Hunter)
+            const shipGeo = new THREE.BoxGeometry(1.2, 0.5, 0.8);
+            const shipMat = new THREE.MeshPhongMaterial({ color: 0xff4500 });
+            ship = new THREE.Mesh(shipGeo, shipMat);
+            ship.position.y = -3;
+            scene.add(ship);
 
-            // Création des 3 coffres (emplacements)
-            const positions = [-150, 0, 150];
-            positions.forEach((x, i) => {
-                const chestGroup = new THREE.Group();
-                
-                // Base du coffre
-                const box = new THREE.Mesh(
-                    new THREE.BoxGeometry(80, 60, 50),
-                    new THREE.MeshPhongMaterial({ color: 0x5d4037 })
-                );
-                chestGroup.add(box);
-
-                // Plan pour l'image
-                const spriteGeo = new THREE.PlaneGeometry(70, 70);
-                const spriteMat = new THREE.MeshBasicMaterial({ 
-                    transparent: true, 
-                    side: THREE.DoubleSide 
-                });
-                const sprite = new THREE.Mesh(spriteGeo, spriteMat);
-                sprite.position.y = 80;
-                chestGroup.add(sprite);
-
-                chestGroup.position.set(x, -300, -400);
-                scene.add(chestGroup);
-                chests.push({ mesh: chestGroup, spriteMat: spriteMat, info: null });
-            });
-
+            camera.position.z = 5;
             spawnWave();
-            animate();
-        }
-
-        function speak(text) {
-            const msg = new SpeechSynthesisUtterance(text);
-            msg.lang = 'en-US';
-            window.speechSynthesis.speak(msg);
         }
 
         function spawnWave() {
-            if (currentQuestion >= totalQuestions) {
-                endGame();
-                return;
-            }
-
+            if (currentQuestion >= 10) { endGame(); return; }
+            
+            chests.forEach(c => scene.remove(c.mesh));
+            chests = [];
             canHit = true;
-            const shuffled = [...vocab].sort(() => 0.5 - Math.random());
-            const selection = shuffled.slice(0, 3);
-            targetItem = selection[Math.floor(Math.random() * 3)];
 
-            document.getElementById('target-display').innerText = "???";
-            speak(targetItem.word);
+            const indices = [...Array(vocab.length).keys()].sort(() => Math.random() - 0.5).slice(0, 3);
+            const correctIdx = indices[Math.floor(Math.random() * 3)];
+            targetItem = vocab[correctIdx];
+            document.getElementById('target-word').innerText = "FIND: " + targetItem.word;
 
-            chests.forEach((ch, i) => {
-                ch.info = selection[i];
-                // Charger la texture dynamiquement
-                textureLoader.load(selection[i].img, (texture) => {
-                    ch.spriteMat.map = texture;
-                    ch.spriteMat.needsUpdate = true;
-                });
-                ch.mesh.position.y = 0;
-                ch.mesh.position.z = -800;
+            indices.forEach((idx, i) => {
+                const texture = loader.load(vocab[idx].img);
+                const chestGeo = new THREE.PlaneGeometry(1.2, 1.2);
+                const chestMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+                const mesh = new THREE.Mesh(chestGeo, chestMat);
+                mesh.position.set((i - 1) * 2.2, 6, 0);
+                scene.add(mesh);
+                chests.push({ mesh, info: vocab[idx] });
             });
         }
 
-        function checkHit(index) {
-            if (!canHit || !gameActive) return;
-            
-            canHit = false;
-            const isCorrect = chests[index].info.word === targetItem.word;
-            if (isCorrect) score++;
-            
-            document.getElementById('score-board').innerText = `Score: ${score} / 10`;
-            handleHit(isCorrect);
+        function moveShip(dir) { moveDir = dir; }
+        function stopShip() { moveDir = 0; }
 
-            chests.forEach(ch => ch.mesh.position.y = -300);
-            currentQuestion++;
-            setTimeout(spawnWave, 2000);
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!gameActive) return;
+
+            if (moveDir !== 0) {
+                ship.position.x = Math.max(-2.5, Math.min(2.5, ship.position.x + moveDir * 0.1));
+            }
+
+            chests.forEach(c => {
+                c.mesh.position.y -= 0.04;
+                if (canHit && c.mesh.position.distanceTo(ship.position) < 0.8) {
+                    canHit = false;
+                    const isCorrect = c.info.word === targetItem.word;
+                    if(isCorrect) score++;
+                    document.getElementById('score-display').innerText = `SCORE: ${score} / 10`;
+                    handleHit(isCorrect);
+                    chests.forEach(ch => ch.mesh.position.y = -500);
+                    currentQuestion++;
+                    setTimeout(spawnWave, 2000);
+                }
+                if (c.mesh.position.y < -5) spawnWave();
+            });
+
+            renderer.render(scene, camera);
         }
 
         function handleHit(isCorrect) {
             const ft = document.getElementById('feedback-text');
-            ft.innerText = isCorrect ? "BRAVO! 🌟" : "OUPS! ⚓";
+            ft.innerText = isCorrect ? "BRAVO! 🎃" : "OUPS! 💀";
             ft.style.color = isCorrect ? "#ffcc00" : "#ff4d4d";
             ft.style.opacity = "1";
-            if (!isCorrect) speak("No, it was " + targetItem.word);
             setTimeout(() => ft.style.opacity = "0", 1500);
         }
 
         function endGame() {
             gameActive = false;
-            const screen = document.getElementById('end-screen');
-            const stars = document.querySelectorAll('.star');
-            screen.style.display = 'flex';
+            document.getElementById('end-screen').style.display = 'flex';
+            document.getElementById('final-score').innerText = `Ton score : ${score} / 10`;
+            
+            const starsContainer = document.getElementById('stars-container');
+            let starsHTML = "";
+            let starCount = 0;
 
-            // Logique des étoiles
-            let starsToLight = 0;
-            if (score >= 10) {
-                starsToLight = 3;
-                document.getElementById('trophy').classList.remove('hidden');
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-            } else if (score >= 7) {
-                starsToLight = 3;
-            } else if (score >= 4) {
-                starsToLight = 2;
-            } else if (score >= 1) {
-                starsToLight = 1;
+            if (score >= 1) starCount = 1;
+            if (score >= 5) starCount = 2;
+            if (score >= 8) starCount = 3;
+
+            for (let i = 1; i <= 3; i++) {
+                starsHTML += i <= starCount ? '<span class="star">★</span>' : '<span class="star-empty">★</span>';
             }
+            starsContainer.innerHTML = starsHTML;
 
-            stars.forEach((star, i) => {
-                if (i < starsToLight) setTimeout(() => star.classList.add('active'), i * 400);
-            });
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            if (gameActive) {
-                chests.forEach(ch => {
-                    if (ch.mesh.position.y >= 0) {
-                        ch.mesh.position.z += 6;
-                        if (ch.mesh.position.z > 100) { // S'ils passent le bateau sans clic
-                            canHit = false;
-                            ch.mesh.position.y = -300;
-                            if(ch.info.word === targetItem.word) {
-                                currentQuestion++;
-                                setTimeout(spawnWave, 1000);
-                            }
-                        }
-                    }
+            if (score === 10) {
+                document.getElementById('trophy').style.display = 'block';
+                confetti({
+                    particleCount: 150,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    colors: ['#ffcc00', '#ffffff', '#ff4500']
                 });
-                boat.position.y = 20 + Math.sin(Date.now() * 0.002) * 5;
             }
-            renderer.render(scene, camera);
         }
 
         window.addEventListener('resize', () => {
@@ -241,9 +199,8 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
-        init();
     </script>
 </body>
 </html>
+
 
