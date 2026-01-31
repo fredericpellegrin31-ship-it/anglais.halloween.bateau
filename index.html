@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pirate Vocabulary - Perfect Float</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background-color: #0088ff; touch-action: none; }
+        canvas { display: block; }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: space-between; padding: 15px;
+        }
+        .hud-element {
+            pointer-events: auto; background: #fff;
+            color: #005bb7; padding: 8px 16px; border-radius: 12px;
+            border: 3px solid #005bb7; box-shadow: 0 4px 0px #003d7a; font-weight: bold;
+            font-size: 1.1rem;
+        }
+        #audio-btn {
+            pointer-events: auto; background: #ffcc00; color: #b34700; 
+            padding: 8px 20px; border-radius: 30px; font-size: 1rem; 
+            box-shadow: 0 4px 0px #cca300; border: 3px solid #fff; 
+            font-weight: 900; cursor: pointer; display: flex; 
+            align-items: center; gap: 8px; transition: transform 0.1s;
+            z-index: 1000; /* Force z-index pour être cliquable */
+        }
+        #audio-btn:active { transform: translateY(3px); box-shadow: none; }
+        #feedback-text {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 4rem; font-weight: 900; opacity: 0; text-align: center;
+            color: white; -webkit-text-stroke: 2px #000;
+            transition: opacity 0.2s; z-index: 20; pointer-events: none;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #start-screen, #end-screen {
+            position: absolute; inset: 0; background: #0088ff;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; color: white; text-align: center; padding: 20px;
+        }
+        #touch-zones {
+            position: absolute; inset: 0; display: flex; z-index: 50;
+        }
+        .zone { flex: 1; pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1 class="text-5xl font-black mb-4 italic text-white" style="-webkit-text-stroke: 2px #004488;">VOCABULARY PIRATE</h1>
+        <p class="text-xl mb-8 font-bold text-white">Écoute bien et dirige le bateau !</p>
+        <button onclick="startGame()" class="bg-yellow-400 hover:bg-yellow-500 text-blue-900 px-10 py-4 rounded-xl text-2xl font-black transition-transform transform hover:scale-105 border-b-4 border-yellow-600">JOUER</button>
+    </div>
+
+    <div id="end-screen" style="display:none;">
+        <h1 class="text-5xl font-black mb-4 italic text-white" style="-webkit-text-stroke: 2px #004488;">TERMINÉ !</h1>
+        <p class="text-2xl mb-8 font-bold text-white">Tu as fini les 10 questions !</p>
+        <button onclick="location.reload()" class="bg-yellow-400 hover:bg-yellow-500 text-blue-900 px-10 py-4 rounded-xl text-2xl font-black border-b-4 border-yellow-600">RECOMMENCER</button>
+    </div>
+
+    <div id="touch-zones" style="display:none;">
+        <div class="zone" id="zone-left"></div>
+        <div class="zone" id="zone-right"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="flex justify-between items-center w-full">
+            <div class="hud-element">QUEST: <span id="progress">1</span> / 10</div>
+            <button id="audio-btn" onclick="forceReplay()">
+                <span style="font-size: 1.2em;">🔊</span> RÉÉCOUTER
+            </button>
+        </div>
+        <div id="feedback-text">BRAVO!</div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, ship, water;
+        let ambientFoam = [], wakeParticles = [];
+        let clouds = [], chests = [];
+        let currentQuestion = 1;
+        const totalQuestions = 10;
+        let targetItem = null;
+        let currentLane = 1; 
+        const laneX = [-15, -5, 5, 15];
+        let gameActive = false;
+        let canHit = true;
+        
+        let autoSpeed = 0.45; 
+        const spawnDistance = 280;
+
+        const vocabulary = [
+            { word: "pirate", emoji: "🏴‍☠️" },
+            { word: "pumpkin", emoji: "🎃" },
+            { word: "skeleton", emoji: "💀" },
+            { word: "mummy", emoji: "🩹" },
+            { word: "vampire", emoji: "🧛" },
+            { word: "witch", emoji: "🧙‍♀️" },
+            { word: "monster", emoji: "👹" },
+            { word: "ghost", emoji: "👻" }
+        ];
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('touch-zones').style.display = 'flex';
+            init();
+            gameActive = true;
+            animate();
+            spawnWave();
+        }
+
+        // --- SYSTEME AUDIO ROBUSTE ---
+        function speak(text) {
+            if (!('speechSynthesis' in window)) return;
+            
+            // Annuler toute parole en cours
+            window.speechSynthesis.cancel();
+            
+            // Petit délai pour s'assurer que le navigateur est prêt
+            setTimeout(() => {
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.lang = 'en-US';
+                msg.rate = 0.75; 
+                msg.volume = 1.0;
+                window.speechSynthesis.speak(msg);
+            }, 10); 
+        }
+
+        // Fonction appelée par le bouton, exposée globalement
+        window.forceReplay = function() {
+            if(gameActive && targetItem) {
+                console.log("Replaying: " + targetItem.word); // Debug
+                speak(targetItem.word);
+            }
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0088ff);
+            scene.fog = new THREE.Fog(0x0088ff, 250, 700);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            // Lumière forte pour le style Toon
+            scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+            sun.position.set(50, 100, 50);
+            scene.add(sun);
+
+            // Mer
+            const waterGeo = new THREE.PlaneGeometry(10000, 10000, 60, 60);
+            const waterMat = new THREE.MeshToonMaterial({ color: 0x0055aa });
+            water = new THREE.Mesh(waterGeo, waterMat);
+            water.rotation.x = -Math.PI / 2;
+            scene.add(water);
+
+            // Écume d'ambiance
+            for(let i=0; i<180; i++) {
+                const fMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+                const f = new THREE.Mesh(new THREE.CircleGeometry(1.5, 8), fMat);
+                f.rotation.x = -Math.PI/2;
+                scene.add(f);
+                ambientFoam.push({
+                    mesh: f, active: false, life: 0, maxLife: 60 + Math.random() * 100
+                });
+            }
+
+            // Particules de sillage
+            for(let i=0; i<80; i++) {
+                const wMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+                const w = new THREE.Mesh(new THREE.CircleGeometry(1.2, 8), wMat);
+                w.rotation.x = -Math.PI/2;
+                scene.add(w);
+                wakeParticles.push({ mesh: w, active: false, life: 0 });
+            }
+
+            createDetailedShip();
+            createReal3DClouds();
+            setupControls();
+        }
+
+        // --- MATHÉMATIQUES DES VAGUES (Synchronisation Bateau/Eau) ---
+        function getWaveHeight(x, z, time) {
+            // Formule partagée pour que le bateau colle à l'eau
+            return Math.sin(x * 0.08 + time * 1.5) * 1.5 + Math.cos(z * 0.08 + time * 1.5) * 1.5;
+        }
+
+        function createDetailedShip() {
+            ship = new THREE.Group();
+            
+            // Éclaboussure permanente à la base
+            const splash = new THREE.Mesh(
+                new THREE.RingGeometry(3.5, 5, 16), 
+                new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: 2 })
+            );
+            splash.rotation.x = -Math.PI / 2;
+            splash.position.y = 0.5;
+            ship.add(splash);
+
+            // Coque
+            const hull = new THREE.Mesh(new THREE.SphereGeometry(3.5, 16, 16), new THREE.MeshToonMaterial({ color: 0x5c3a21 })); // Bois sombre
+            hull.scale.set(1, 0.8, 2.4);
+            ship.add(hull);
+
+            // Pont supérieur
+            const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 1, 16), new THREE.MeshToonMaterial({ color: 0x8f6a4e })); // Bois clair
+            deck.scale.set(1, 0.5, 2.3);
+            deck.position.y = 1.8;
+            ship.add(deck);
+
+            // Mât
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 15), new THREE.MeshToonMaterial({color: 0x2d1a0a}));
+            mast.position.y = 7;
+            ship.add(mast);
+
+            // Vigie
+            const nest = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.8, 1.2, 8), new THREE.MeshToonMaterial({color: 0x5c3a21}));
+            nest.position.y = 13;
+            ship.add(nest);
+
+            // Voile Blanche Opaque
+            const sailGeo = new THREE.BoxGeometry(9, 10, 0.2); // Légère épaisseur pour faire "objet"
+            const sailMat = new THREE.MeshToonMaterial({ color: 0xffffff }); 
+            const sail = new THREE.Mesh(sailGeo, sailMat);
+            sail.position.set(0, 8, 0.6);
+            // Courbure simulée par rotation
+            sail.rotation.x = 0.1;
+            ship.add(sail);
+
+            ship.position.x = laneX[currentLane];
+            scene.add(ship);
+        }
+
+        function createReal3DClouds() {
+            const cloudMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true });
+            
+            for (let i = 0; i < 50; i++) {
+                const cloudGroup = new THREE.Group();
+                
+                // Création d'un nuage avec plusieurs sphères
+                const spheresCount = 5 + Math.floor(Math.random() * 4);
+                for(let j=0; j < spheresCount; j++) {
+                    const radius = 5 + Math.random() * 4;
+                    const s = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 12), cloudMat);
+                    
+                    // Position aléatoire en grappe
+                    s.position.set(
+                        (Math.random() - 0.5) * 10,
+                        (Math.random() - 0.5) * 5,
+                        (Math.random() - 0.5) * 6
+                    );
+                    cloudGroup.add(s);
+                }
+                
+                // Positionnement dans le ciel
+                cloudGroup.position.set(
+                    (Math.random()-0.5) * 1200, 
+                    30 + Math.random() * 30, // Hauteur
+                    (Math.random()-0.5) * 2000
+                );
+                scene.add(cloudGroup);
+                clouds.push(cloudGroup);
+            }
+        }
+
+        function spawnWave() {
+            if(currentQuestion > totalQuestions) { endGame(); return; }
+            document.getElementById('progress').innerText = currentQuestion;
+            canHit = true;
+
+            chests.forEach(c => scene.remove(c.mesh));
+            chests = [];
+
+            targetItem = vocabulary[Math.floor(Math.random() * vocabulary.length)];
+            speak(targetItem.word);
+
+            let choices = [targetItem];
+            while(choices.length < 4) {
+                let rand = vocabulary[Math.floor(Math.random() * vocabulary.length)];
+                if(!choices.find(c => c.word === rand.word)) choices.push(rand);
+            }
+            choices.sort(() => Math.random() - 0.5);
+
+            choices.forEach((data, i) => {
+                const group = createChestMesh(data.emoji);
+                group.position.set(laneX[i], 2, ship.position.z - spawnDistance);
+                scene.add(group);
+                chests.push({ mesh: group, info: data, lane: i });
+            });
+        }
+
+        function createChestMesh(emoji) {
+            const group = new THREE.Group();
+            const box = new THREE.Mesh(new THREE.BoxGeometry(7, 5, 7), new THREE.MeshToonMaterial({ color: 0x8b4513 }));
+            group.add(box);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffedd5'; // Fond clair crème
+            ctx.beginPath(); ctx.roundRect(10, 10, 236, 236, 40); ctx.fill();
+            ctx.lineWidth = 10; ctx.strokeStyle = '#ea580c'; ctx.stroke();
+            ctx.font = '160px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, 128, 128);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.MeshBasicMaterial({ map: tex });
+            const label = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), mat);
+            label.position.set(0, 0, 3.55); 
+            group.add(label);
+            return group;
+        }
+
+        function setupControls() {
+            const moveLeft = () => { if(currentLane > 0) currentLane--; };
+            const moveRight = () => { if(currentLane < 3) currentLane++; };
+            document.getElementById('zone-left').addEventListener('pointerdown', (e) => { e.preventDefault(); moveLeft(); });
+            document.getElementById('zone-right').addEventListener('pointerdown', (e) => { e.preventDefault(); moveRight(); });
+            window.addEventListener('keydown', e => {
+                if(e.code === 'ArrowLeft') moveLeft();
+                if(e.code === 'ArrowRight') moveRight();
+            });
+        }
+
+        function animate() {
+            if(!gameActive) return;
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+
+            // 1. Déformation de l'eau
+            const v = water.geometry.attributes.position.array;
+            for (let i = 0; i < v.length; i += 3) {
+                // v[i+2] est la hauteur Z locale (Y monde)
+                v[i+2] = getWaveHeight(v[i], v[i+1], time);
+            }
+            water.geometry.attributes.position.needsUpdate = true;
+
+            // 2. Écume Ambiante (Pop aléatoire)
+            ambientFoam.forEach(f => {
+                if(!f.active && Math.random() < 0.01) {
+                    f.active = true; f.life = 0;
+                    f.mesh.position.set((Math.random()-0.5)*500, 0, ship.position.z - (Math.random()*600 - 100));
+                }
+                if(f.active) {
+                    f.life++;
+                    // La mousse suit la hauteur de l'eau
+                    f.mesh.position.y = getWaveHeight(f.mesh.position.x, f.mesh.position.z, time) + 0.2;
+                    f.mesh.material.opacity = Math.sin((f.life/f.maxLife)*Math.PI)*0.6;
+                    f.mesh.scale.setScalar(1 + (f.life/f.maxLife)*1.5);
+                    if(f.life >= f.maxLife) f.active = false;
+                }
+            });
+
+            // 3. Sillage (Wake) derrière le bateau
+            let wake = wakeParticles.find(p => !p.active);
+            if(wake && Math.random() > 0.5) {
+                wake.active = true; wake.life = 0;
+                wake.mesh.position.copy(ship.position);
+                wake.mesh.position.z += 3; // Un peu derrière le centre
+            }
+            wakeParticles.forEach(w => {
+                if(w.active) {
+                    w.life += 0.015;
+                    w.mesh.position.y = getWaveHeight(w.mesh.position.x, w.mesh.position.z, time) + 0.2;
+                    w.mesh.material.opacity = 0.5 * (1 - w.life);
+                    w.mesh.scale.setScalar(1 + w.life * 2);
+                    if(w.life >= 1) w.active = false;
+                } else { w.mesh.material.opacity = 0; }
+            });
+
+            // 4. Physique du Bateau (Le changement important est ici)
+            ship.position.z -= autoSpeed;
+            ship.position.x = THREE.MathUtils.lerp(ship.position.x, laneX[currentLane], 0.1);
+            
+            // Calcul de la hauteur de la vague sous le bateau
+            const waveH = getWaveHeight(ship.position.x, ship.position.z, time);
+            // On ajoute +2.0 ou +2.5 pour qu'il soit bien AU DESSUS de l'eau
+            ship.position.y = waveH + 2.5; 
+            
+            // Tangage et Roulis doux
+            ship.rotation.x = Math.cos(time * 1.5) * 0.15; 
+            ship.rotation.z = (ship.position.x - laneX[currentLane]) * -0.04 + Math.sin(time)*0.05;
+
+            // Caméra
+            camera.position.lerp(new THREE.Vector3(ship.position.x * 0.4, 45, ship.position.z + 100), 0.1);
+            camera.lookAt(ship.position.x * 0.4, 0, ship.position.z - 60);
+            water.position.z = ship.position.z;
+
+            // Nuages
+            clouds.forEach(c => {
+                if (c.position.z > ship.position.z + 300) {
+                    c.position.z = ship.position.z - 1800;
+                    c.position.x = (Math.random()-0.5)*1500;
+                }
+            });
+
+            // Coffres (Flottent aussi)
+            chests.forEach(c => {
+                c.mesh.position.y = getWaveHeight(c.mesh.position.x, c.mesh.position.z, time) + 3.0; // Coffres bien hauts
+                if (canHit && Math.abs(ship.position.z - c.mesh.position.z) < 7) {
+                    if (currentLane === c.lane) {
+                        canHit = false;
+                        handleHit(c.info.word === targetItem.word);
+                        chests.forEach(ch => ch.mesh.position.y = -300);
+                        currentQuestion++;
+                        setTimeout(spawnWave, 2500);
+                    }
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function handleHit(isCorrect) {
+            const ft = document.getElementById('feedback-text');
+            if(isCorrect) {
+                ft.innerText = "BRAVO! 🌟"; ft.style.color = "#ffcc00";
+                speak("Great job!");
+            } else {
+                ft.innerText = "OUPS! ⚓"; ft.style.color = "#ff4d4d";
+                speak("No, it was " + targetItem.word);
+            }
+            ft.style.opacity = "1";
+            setTimeout(() => ft.style.opacity = "0", 1800);
+        }
+
+        function endGame() {
+            gameActive = false;
+            document.getElementById('end-screen').style.display = 'flex';
+            document.getElementById('touch-zones').style.display = 'none';
+        }
+
+        window.addEventListener('resize', () => {
+            if (!camera || !renderer) return; // Add safety check
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
