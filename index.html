@@ -92,7 +92,7 @@
     <script>
         let scene, camera, renderer, ship, water;
         let ambientFoam = [], wakeParticles = [];
-        let clouds = [], chests = [];
+        let clouds = [], chests = [], islands = [];
         let currentQuestion = 1;
         let score = 0;
         const totalQuestions = 10;
@@ -152,8 +152,8 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
             sun.position.set(50, 100, 50);
             scene.add(sun);
 
@@ -172,17 +172,18 @@
                 ambientFoam.push({ mesh: f, active: false, life: 0, maxLife: 100 + Math.random()*50 });
             }
 
-            // Particules d'écume du bateau (Sillage)
-            for(let i=0; i<60; i++) {
+            // Particules d'écume du bateau (Sillage/Traînée)
+            for(let i=0; i<200; i++) {
                 const wMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
-                const w = new THREE.Mesh(new THREE.CircleGeometry(1.2, 8), wMat);
+                const w = new THREE.Mesh(new THREE.CircleGeometry(1.8, 8), wMat);
                 w.rotation.x = -Math.PI/2;
                 scene.add(w);
-                wakeParticles.push({ mesh: w, active: false, life: 0, maxLife: 40 });
+                wakeParticles.push({ mesh: w, active: false, life: 0, maxLife: 80 });
             }
 
             createDetailedShip();
             createClouds();
+            createInitialIslands();
             setupControls();
         }
 
@@ -192,17 +193,35 @@
 
         function createDetailedShip() {
             ship = new THREE.Group();
+            
+            // Ombre portée sous le bateau
+            const shipShadow = new THREE.Mesh(
+                new THREE.CircleGeometry(4, 16),
+                new THREE.MeshBasicMaterial({ color: 0x003366, transparent: true, opacity: 0.4 })
+            );
+            shipShadow.rotation.x = -Math.PI / 2;
+            shipShadow.position.y = -0.7; // Juste sous la coque
+            ship.add(shipShadow);
+
+            // Coque
             const hull = new THREE.Mesh(new THREE.SphereGeometry(3.5, 16, 16), new THREE.MeshToonMaterial({ color: 0x5c3a21 }));
-            hull.scale.set(1, 0.8, 2.4); ship.add(hull);
+            hull.scale.set(1.2, 1.8, 2.4); 
+            hull.position.y = -0.5; 
+            ship.add(hull);
             
-            const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 1, 16), new THREE.MeshToonMaterial({ color: 0x8f6a4e }));
-            deck.scale.set(1, 0.5, 2.3); deck.position.y = 1.8; ship.add(deck);
+            const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 1, 16), new THREE.MeshToonMaterial({ color: 0x8f6a4e }));
+            deck.scale.set(1, 0.5, 2.3); 
+            deck.position.y = 2.5; 
+            ship.add(deck);
             
-            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 15), new THREE.MeshToonMaterial({color: 0x2d1a0a}));
-            mast.position.y = 7; ship.add(mast);
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 16), new THREE.MeshToonMaterial({color: 0x2d1a0a}));
+            mast.position.y = 7.5; 
+            ship.add(mast);
             
-            const sail = new THREE.Mesh(new THREE.BoxGeometry(9, 10, 0.2), new THREE.MeshToonMaterial({ color: 0xffffff }));
-            sail.position.set(0, 8, 0.6); sail.rotation.x = 0.1; ship.add(sail);
+            const sail = new THREE.Mesh(new THREE.BoxGeometry(10, 11, 0.25), new THREE.MeshToonMaterial({ color: 0xffffff }));
+            sail.position.set(0, 8.5, 0.6); 
+            sail.rotation.x = 0.1; 
+            ship.add(sail);
             
             ship.position.x = laneX[currentLane];
             scene.add(ship);
@@ -221,6 +240,72 @@
                 cloudGroup.position.set((Math.random()-0.5)*800, 40+Math.random()*40, (Math.random()-0.5)*1500);
                 scene.add(cloudGroup);
                 clouds.push(cloudGroup);
+            }
+        }
+
+        function createIsland(zPos, xSide) {
+            const islandGroup = new THREE.Group();
+            
+            // Le sable
+            const sandGeo = new THREE.CylinderGeometry(8, 10, 5, 12);
+            const sandMat = new THREE.MeshToonMaterial({ color: 0xffcc66 });
+            const sand = new THREE.Mesh(sandGeo, sandMat);
+            islandGroup.add(sand);
+
+            // Aléatoire 1, 2, 3 ou 4 cocotiers
+            const palmCount = 1 + Math.floor(Math.random() * 4);
+            const leafMat = new THREE.MeshToonMaterial({ color: 0x2e7d32 }); 
+
+            for(let p = 0; p < palmCount; p++) {
+                const palm = new THREE.Group();
+                
+                // Positionnement des palmiers sur l'île
+                const angle = (p / palmCount) * Math.PI * 2;
+                const radius = palmCount > 1 ? 2 + Math.random() * 3 : 0;
+                const posX = Math.cos(angle) * radius;
+                const posZ = Math.sin(angle) * radius;
+
+                // Ombre au pied du palmier
+                const shadow = new THREE.Mesh(
+                    new THREE.CircleGeometry(2, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xcc9933, transparent: true, opacity: 0.5 })
+                );
+                shadow.rotation.x = -Math.PI / 2;
+                shadow.position.set(posX, 2.6, posZ);
+                islandGroup.add(shadow);
+
+                const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 8, 8);
+                const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 6.5; 
+                trunk.rotation.z = (Math.random() - 0.5) * 0.4;
+                trunk.rotation.x = (Math.random() - 0.5) * 0.4;
+                palm.add(trunk);
+
+                for(let i=0; i<5; i++) {
+                    const leaf = new THREE.Mesh(new THREE.SphereGeometry(2.8, 8, 4), leafMat);
+                    leaf.scale.set(1.5, 0.2, 0.5);
+                    leaf.position.y = 10.5;
+                    leaf.rotation.y = (i / 5) * Math.PI * 2;
+                    leaf.rotation.z = 0.6;
+                    palm.add(leaf);
+                }
+                
+                palm.position.set(posX, 0, posZ);
+                palm.scale.setScalar(0.8 + Math.random() * 0.4);
+                islandGroup.add(palm);
+            }
+
+            islandGroup.position.set(xSide, 0, zPos); 
+            islandGroup.scale.setScalar(0.8 + Math.random() * 0.4);
+            scene.add(islandGroup);
+            return islandGroup;
+        }
+
+        function createInitialIslands() {
+            for(let i=0; i<6; i++) {
+                const side = Math.random() > 0.5 ? 65 : -65;
+                islands.push(createIsland(-i * 250 - 100, side));
             }
         }
 
@@ -260,7 +345,6 @@
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
             const label = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), mat);
             
-            // On place l'image légèrement DEVANT le cube pour éviter les interférences (Z-fighting)
             label.position.set(0, 0, 3.55); 
             group.add(label);
             return group;
@@ -278,21 +362,31 @@
         }
 
         function updateWake(time) {
-            // Activer une nouvelle particule d'écume de sillage
+            // Génération systématique de particules pour la traînée
             const p = wakeParticles.find(p => !p.active);
             if(p) {
                 p.active = true;
                 p.life = 0;
-                // Positionner à l'arrière du bateau
-                p.mesh.position.set(ship.position.x + (Math.random()-0.5)*4, 0.1, ship.position.z + 5);
+                // Particule placée derrière le bateau avec une petite dispersion
+                p.mesh.position.set(
+                    ship.position.x + (Math.random() - 0.5) * 4, 
+                    0.1, 
+                    ship.position.z + 8
+                );
             }
 
             wakeParticles.forEach(p => {
                 if(p.active) {
                     p.life++;
+                    // Suivre le mouvement des vagues
                     p.mesh.position.y = getWaveHeight(p.mesh.position.x, p.mesh.position.z, time) + 0.15;
-                    p.mesh.material.opacity = (1 - (p.life / p.maxLife)) * 0.8;
-                    p.mesh.scale.setScalar(1 + (p.life / p.maxLife) * 2);
+                    // Disparition progressive
+                    p.mesh.material.opacity = (1 - (p.life / p.maxLife)) * 0.7;
+                    // Élargissement de l'écume
+                    const scale = 1 + (p.life / p.maxLife) * 3.0;
+                    p.mesh.scale.set(scale, scale, 1);
+                    // Dérive très légère vers l'arrière
+                    p.mesh.position.z += 0.2;
                     if(p.life >= p.maxLife) p.active = false;
                 }
             });
@@ -318,7 +412,7 @@
                 if(f.active) {
                     f.life++; 
                     f.mesh.position.y = getWaveHeight(f.mesh.position.x, f.mesh.position.z, time) + 0.2;
-                    f.mesh.material.opacity = Math.sin((f.life/f.maxLife)*Math.PI)*0.5;
+                    f.mesh.material.opacity = Math.sin((f.life/f.maxLife)*Math.PI)*0.4;
                     f.mesh.scale.setScalar(1 + (f.life/f.maxLife)*1.2);
                     if(f.life >= f.maxLife) f.active = false;
                 }
@@ -327,8 +421,8 @@
             // Avancée du bateau
             ship.position.z -= autoSpeed;
             ship.position.x = THREE.MathUtils.lerp(ship.position.x, laneX[currentLane], 0.12);
-            ship.position.y = getWaveHeight(ship.position.x, ship.position.z, time) + 2.2; 
-            ship.rotation.x = Math.cos(time * 2) * 0.1; 
+            ship.position.y = getWaveHeight(ship.position.x, ship.position.z, time) + 0.8; 
+            ship.rotation.x = Math.cos(time * 2) * 0.08; 
             ship.rotation.z = (ship.position.x - laneX[currentLane]) * -0.05;
 
             updateWake(time);
@@ -343,9 +437,18 @@
                 if(c.position.z > ship.position.z + 600) c.position.z -= 1500;
             });
 
+            // Îles
+            islands.forEach(isl => {
+                isl.position.y = getWaveHeight(isl.position.x, isl.position.z, time) * 0.15;
+                if(isl.position.z > ship.position.z + 200) {
+                    isl.position.z -= 1200;
+                    isl.position.x = Math.random() > 0.5 ? 65 + Math.random()*20 : -65 - Math.random()*20;
+                }
+            });
+
             // Coffres
             chests.forEach(c => {
-                c.mesh.position.y = getWaveHeight(c.mesh.position.x, c.mesh.position.z, time) + 3.0;
+                c.mesh.position.y = getWaveHeight(c.mesh.position.x, c.mesh.position.z, time) + 3.5;
                 if (canHit && Math.abs(ship.position.z - c.mesh.position.z) < 8) {
                     if (currentLane === c.lane) {
                         canHit = false;
@@ -427,7 +530,6 @@
         }
 
         window.addEventListener('resize', () => {
-            // Vérification de sécurité pour éviter l'erreur TypeError
             if (camera && renderer) {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
