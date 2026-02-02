@@ -3,33 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pirate Vocabulary - Sky Water</title>
+    <title>Pirate Vocabulary - Transparent Sail</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background-color: #0088ff; touch-action: none; }
         canvas { display: block; }
+        
         #ui-layer {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; display: flex; flex-direction: column;
             justify-content: space-between; padding: 15px;
+            z-index: 100;
         }
+        
         .hud-element {
             pointer-events: auto; background: #fff;
             color: #005bb7; padding: 8px 16px; border-radius: 12px;
             border: 3px solid #005bb7; box-shadow: 0 4px 0px #003d7a; font-weight: bold;
             font-size: 1.1rem;
         }
-        #audio-btn {
+        
+        .btn-action {
             pointer-events: auto; background: #ffcc00; color: #b34700; 
-            padding: 8px 20px; border-radius: 30px; font-size: 1rem; 
+            padding: 10px 20px; border-radius: 30px; font-size: 0.9rem; 
             box-shadow: 0 4px 0px #cca300; border: 3px solid #fff; 
             font-weight: 900; cursor: pointer; display: flex; 
             align-items: center; gap: 8px; transition: transform 0.1s;
-            z-index: 1000;
         }
-        #audio-btn:active { transform: translateY(3px); box-shadow: none; }
+        .btn-action:active { transform: translateY(3px); box-shadow: none; }
+        
         #feedback-text {
             position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
             font-size: 4rem; font-weight: 900; opacity: 0; text-align: center;
@@ -37,15 +41,18 @@
             transition: opacity 0.2s; z-index: 20; pointer-events: none;
             text-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
+        
         #start-screen, #end-screen {
             position: absolute; inset: 0; background: #0088ff;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 100; color: white; text-align: center; padding: 20px;
+            z-index: 200; color: white; text-align: center; padding: 20px;
         }
+        
         #touch-zones {
-            position: absolute; inset: 0; display: flex; z-index: 50;
+            position: absolute; inset: 0; display: flex; z-index: 80;
         }
         .zone { flex: 1; pointer-events: auto; }
+        
         .star { font-size: 4rem; color: #ccc; margin: 0 5px; }
         .star.active { color: #ffcc00; text-shadow: 0 0 15px rgba(255, 204, 0, 0.8); }
     </style>
@@ -75,9 +82,14 @@
     </div>
 
     <div id="ui-layer">
-        <div class="flex justify-between items-center w-full">
-            <div class="hud-element">QUEST: <span id="progress">1</span> / 10</div>
-            <button id="audio-btn" onclick="forceReplay()">
+        <div class="flex justify-between items-start w-full">
+            <div class="flex flex-col gap-2">
+                <div class="hud-element">QUEST: <span id="progress">1</span> / 10</div>
+                <button class="btn-action" onclick="changeCamera(event)">
+                    🎥 VUE : <span id="cam-name">AÉRIENNE</span>
+                </button>
+            </div>
+            <button id="audio-btn" class="btn-action" onclick="forceReplay(event)">
                 <span style="font-size: 1.2em;">🔊</span> RÉÉCOUTER
             </button>
         </div>
@@ -85,7 +97,7 @@
     </div>
 
     <script>
-        let scene, camera, renderer, ship, water, sun;
+        let scene, camera, renderer, ship, water, sun, wheel;
         let ambientFoam = [], wakeParticles = [];
         let clouds = [], chests = [], islands = [];
         let currentQuestion = 1;
@@ -99,6 +111,9 @@
         
         let autoSpeed = 0.5; 
         const spawnDistance = 300;
+
+        let currentCamMode = 0; 
+        const camModes = ["AÉRIENNE", "PROUE", "ARRIÈRE"];
 
         const vocabulary = [
             { word: "pirate", file: "pirate.png" },
@@ -131,17 +146,23 @@
             }, 50); 
         }
 
-        window.forceReplay = function() {
+        window.forceReplay = function(e) {
+            if(e) e.stopPropagation();
             if(gameActive && targetItem) speak(targetItem.word);
+        };
+
+        window.changeCamera = function(e) {
+            if(e) e.stopPropagation();
+            currentCamMode = (currentCamMode + 1) % 3;
+            document.getElementById('cam-name').innerText = camModes[currentCamMode];
         };
 
         function init() {
             scene = new THREE.Scene();
-            // Couleur du ciel : bleu clair
             scene.background = new THREE.Color(0x0088ff);
-            scene.fog = new THREE.Fog(0x0088ff, 200, 700);
+            scene.fog = new THREE.Fog(0x0088ff, 150, 700);
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -163,30 +184,27 @@
             sun.shadow.mapSize.height = 1024;
             scene.add(sun);
 
-            // Couleur de l'eau identique au ciel (0x0088ff)
-            const waterGeo = new THREE.PlaneGeometry(10000, 10000, 50, 50);
+            const waterGeo = new THREE.PlaneGeometry(10000, 10000, 60, 60);
             const waterMat = new THREE.MeshToonMaterial({ color: 0x0088ff });
             water = new THREE.Mesh(waterGeo, waterMat);
             water.rotation.x = -Math.PI / 2;
             water.receiveShadow = true;
             scene.add(water);
 
-            // Écume
-            for(let i=0; i<150; i++) {
+            for(let i=0; i<100; i++) {
                 const fMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
-                const f = new THREE.Mesh(new THREE.CircleGeometry(1.5, 8), fMat);
+                const f = new THREE.Mesh(new THREE.CircleGeometry(1.2, 8), fMat);
                 f.rotation.x = -Math.PI/2;
                 scene.add(f);
-                ambientFoam.push({ mesh: f, active: false, life: 0, maxLife: 100 + Math.random()*50 });
+                ambientFoam.push({ mesh: f, active: false, life: 0, maxLife: 60 + Math.random()*40 });
             }
 
-            // Traînée du bateau
             for(let i=0; i<300; i++) {
                 const wMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
-                const w = new THREE.Mesh(new THREE.CircleGeometry(1.2, 8), wMat);
+                const w = new THREE.Mesh(new THREE.CircleGeometry(1.0, 8), wMat);
                 w.rotation.x = -Math.PI/2;
                 scene.add(w);
-                wakeParticles.push({ mesh: w, active: false, life: 0, maxLife: 80 });
+                wakeParticles.push({ mesh: w, active: false, life: 0, maxLife: 70 });
             }
 
             createDetailedShip();
@@ -201,22 +219,21 @@
 
         function createDetailedShip() {
             ship = new THREE.Group();
-            
-            const hullGroup = new THREE.Group();
             const hullMat = new THREE.MeshToonMaterial({ color: 0x5c3a21 });
+            
+            // Coque opaque
             const hullBase = new THREE.Mesh(new THREE.SphereGeometry(3.5, 16, 16), hullMat);
             hullBase.scale.set(1.2, 1.8, 2.6); 
             hullBase.position.y = -0.5; 
             hullBase.castShadow = true;
-            hullGroup.add(hullBase);
+            ship.add(hullBase);
 
             const prow = new THREE.Mesh(new THREE.ConeGeometry(3.5, 6, 8), new THREE.MeshToonMaterial({ color: 0x4a2e1a }));
             prow.position.set(0, 0, -6);
             prow.rotation.x = -Math.PI / 2;
             prow.scale.set(1, 0.5, 1);
             prow.castShadow = true;
-            hullGroup.add(prow);
-            ship.add(hullGroup);
+            ship.add(prow);
             
             const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 1, 16), new THREE.MeshToonMaterial({ color: 0x8f6a4e }));
             deck.scale.set(1, 0.5, 2.5); 
@@ -224,20 +241,43 @@
             deck.castShadow = true;
             ship.add(deck);
             
-            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 18), new THREE.MeshToonMaterial({color: 0x2d1a0a}));
+            // Mât et Vigie transluicides pour la visibilité
+            const mastMat = new THREE.MeshToonMaterial({color: 0x2d1a0a, transparent: true, opacity: 0.6});
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 18), mastMat);
             mast.position.y = 8.5; 
-            mast.castShadow = true;
             ship.add(mast);
 
-            const crowNest = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 0.8, 1.5, 8), new THREE.MeshToonMaterial({color: 0x3d2516}));
+            const crowNest = new THREE.Group();
+            const crowNestMat = new THREE.MeshToonMaterial({color: 0x3d2516, transparent: true, opacity: 0.6});
+            const crowBase = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.2, 1.8, 8), crowNestMat);
+            crowNest.add(crowBase);
+            const crowRim = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.2, 8, 16), crowNestMat);
+            crowRim.rotation.x = Math.PI/2;
+            crowRim.position.y = 0.9;
+            crowNest.add(crowRim);
             crowNest.position.y = 15;
-            crowNest.castShadow = true;
             ship.add(crowNest);
-            
-            const sail = new THREE.Mesh(new THREE.BoxGeometry(10, 11, 0.25), new THREE.MeshToonMaterial({ color: 0xf4f4f4 }));
+
+            // Gouvernail opaque
+            wheel = new THREE.Group();
+            const wheelBase = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.5), new THREE.MeshToonMaterial({color: 0x2d1a0a}));
+            wheelBase.rotation.x = Math.PI/2;
+            wheel.add(wheelBase);
+            const wheelCircle = new THREE.Mesh(new THREE.TorusGeometry(1, 0.15, 8, 20), new THREE.MeshToonMaterial({color: 0x8b4513}));
+            wheel.add(wheelCircle);
+            for(let i=0; i<8; i++) {
+                const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.2, 0.1), new THREE.MeshToonMaterial({color: 0x8b4513}));
+                spoke.rotation.z = (i/8) * Math.PI * 2;
+                wheel.add(spoke);
+            }
+            wheel.position.set(0, 4, 5); 
+            ship.add(wheel);
+
+            // Voile translucide pour voir les obstacles
+            const sailMat = new THREE.MeshToonMaterial({ color: 0xf4f4f4, transparent: true, opacity: 0.45 });
+            const sail = new THREE.Mesh(new THREE.BoxGeometry(10, 11, 0.25), sailMat);
             sail.position.set(0, 9.5, 0.6); 
             sail.rotation.x = 0.15; 
-            sail.castShadow = true;
             ship.add(sail);
             
             ship.position.x = laneX[currentLane];
@@ -252,20 +292,10 @@
                 for(let j=0; j < count; j++) {
                     const radius = 5 + Math.random() * 6;
                     const s = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 12), cloudMat);
-                    s.position.set(
-                        (Math.random() - 0.5) * 12,
-                        (Math.random() - 0.5) * 6,
-                        (Math.random() - 0.5) * 10
-                    );
-                    // Pas d'ombre portée pour les nuages comme demandé
-                    s.castShadow = false; 
+                    s.position.set((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 10);
                     cloudGroup.add(s);
                 }
-                cloudGroup.position.set(
-                    (Math.random() - 0.5) * 800, 
-                    60 + Math.random() * 40, 
-                    (Math.random() - 0.5) * 1800
-                );
+                cloudGroup.position.set((Math.random() - 0.5) * 800, 35 + Math.random() * 20, (Math.random() - 0.5) * 1800);
                 scene.add(cloudGroup);
                 clouds.push(cloudGroup);
             }
@@ -284,12 +314,9 @@
 
             for(let p = 0; p < palmCount; p++) {
                 const palm = new THREE.Group();
-                const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 8, 8);
-                const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
-                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 8, 8), new THREE.MeshToonMaterial({ color: 0x8b4513 }));
                 trunk.position.y = 6.5; 
                 trunk.castShadow = true;
-                trunk.receiveShadow = true;
                 palm.add(trunk);
 
                 for(let i=0; i<5; i++) {
@@ -382,12 +409,31 @@
             });
         }
 
-        function updateWake(time) {
+        function updateEffects(time) {
+            if (Math.random() > 0.7) {
+                const f = ambientFoam.find(f => !f.active);
+                if(f) {
+                    f.active = true; f.life = 0;
+                    f.mesh.position.set((Math.random()-0.5)*150, 0, ship.position.z - 150 + Math.random()*200);
+                }
+            }
+
+            ambientFoam.forEach(f => {
+                if(f.active) {
+                    f.life++;
+                    const h = getWaveHeight(f.mesh.position.x, f.mesh.position.z, time);
+                    f.mesh.position.y = h + 1.1;
+                    f.mesh.material.opacity = Math.sin((f.life / f.maxLife) * Math.PI) * 0.6;
+                    f.mesh.scale.setScalar(0.5 + (f.life / f.maxLife));
+                    if(f.life >= f.maxLife) f.active = false;
+                }
+            });
+
             if (Math.random() > 0.5) {
                 const p = wakeParticles.find(p => !p.active);
                 if(p) {
                     p.active = true; p.life = 0;
-                    p.mesh.position.set(ship.position.x + (Math.random() - 0.5) * 4, 1.5, ship.position.z + 5);
+                    p.mesh.position.set(ship.position.x + (Math.random() - 0.5) * 3, 1.5, ship.position.z + 5);
                 }
             }
             
@@ -395,11 +441,11 @@
                 if(p.active) {
                     p.life++;
                     let waveH = getWaveHeight(p.mesh.position.x, p.mesh.position.z, time);
-                    p.mesh.position.y = Math.max(waveH + 1.1, 1.4); 
-                    p.mesh.material.opacity = (1 - (p.life / p.maxLife)) * 0.7;
-                    const scale = 1.0 + (p.life / p.maxLife) * 3.0;
+                    p.mesh.position.y = waveH + 1.1; 
+                    p.mesh.material.opacity = (1 - (p.life / p.maxLife)) * 0.5;
+                    const scale = 0.8 + (p.life / p.maxLife) * 2.5;
                     p.mesh.scale.set(scale, scale, 1);
-                    p.mesh.position.z += 0.2;
+                    p.mesh.position.z += 0.3;
                     if(p.life >= p.maxLife) p.active = false;
                 }
             });
@@ -414,14 +460,32 @@
             water.geometry.attributes.position.needsUpdate = true;
 
             ship.position.z -= autoSpeed;
+            const prevX = ship.position.x;
             ship.position.x = THREE.MathUtils.lerp(ship.position.x, laneX[currentLane], 0.12);
             ship.position.y = getWaveHeight(ship.position.x, ship.position.z, time) + 0.8; 
             ship.rotation.x = Math.cos(time * 2) * 0.08; 
             ship.rotation.z = (ship.position.x - laneX[currentLane]) * -0.05;
 
-            updateWake(time);
-            camera.position.lerp(new THREE.Vector3(ship.position.x * 0.5, 45, ship.position.z + 105), 0.1);
-            camera.lookAt(ship.position.x * 0.5, 0, ship.position.z - 50);
+            wheel.rotation.z = THREE.MathUtils.lerp(wheel.rotation.z, (ship.position.x - prevX) * 15, 0.1);
+
+            updateEffects(time);
+
+            let targetCamPos = new THREE.Vector3();
+            let lookAtPos = new THREE.Vector3();
+
+            if (currentCamMode === 0) { 
+                targetCamPos.set(ship.position.x * 0.6, 40, ship.position.z + 80);
+                lookAtPos.set(ship.position.x * 0.4, 5, ship.position.z - 40);
+            } else if (currentCamMode === 1) { 
+                targetCamPos.set(ship.position.x, ship.position.y + 4.5, ship.position.z - 8);
+                lookAtPos.set(ship.position.x, ship.position.y + 3, ship.position.z - 100);
+            } else { 
+                targetCamPos.set(ship.position.x, ship.position.y + 12, ship.position.z + 25);
+                lookAtPos.set(ship.position.x, ship.position.y + 5, ship.position.z - 50);
+            }
+
+            camera.position.lerp(targetCamPos, 0.08);
+            camera.lookAt(lookAtPos);
             
             sun.position.z = ship.position.z + 50;
             sun.target.position.set(ship.position.x, 0, ship.position.z);
@@ -482,6 +546,7 @@
     </script>
 </body>
 </html>
+
 
 
 
